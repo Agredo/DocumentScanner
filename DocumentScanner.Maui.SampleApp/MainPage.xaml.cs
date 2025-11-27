@@ -113,9 +113,22 @@ public partial class MainPage : ContentPage
             if (currentDetection.Success)
             {
                 // Show detection preview with corners highlighted using the library's visualization API
+                // Optional: Customize visualization for mobile (bigger corners, etc.)
+                var vizOptions = new DocumentScanner.Visualization.VisualizationOptions
+                {
+                    // Mobile-optimized settings
+                    CornerRadius = 30f,          // Bigger corners for touch screens
+                    BorderWidth = 10f,           // Thicker border for visibility
+                    LabelFontSize = 60f,         // Larger labels
+                    ConfidenceFontSize = 70f,    // Larger confidence text
+                    OutputFormat = SkiaSharp.SKEncodedImageFormat.Jpeg,
+                    OutputQuality = 90           // Good balance between quality and size
+                };
+                
                 var previewBytes = scanner.CreateVisualization(
                     currentImageBytes, 
-                    currentDetection
+                    currentDetection,
+                    vizOptions  // Use custom options
                 );
                 
                 await MainThread.InvokeOnMainThreadAsync(() =>
