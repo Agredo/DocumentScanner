@@ -6,6 +6,8 @@ using SkiaSharp;
 
 Console.WriteLine("=== DocumentScanner Debug Tool ===\n");
 
+//string imagePath = @"C:\Users\chris\Downloads\document_perspective_correction1.jpg";
+//string imagePath = @"C:\Users\chris\Pictures\Camera Roll\WIN_20251103_01_13_40_Pro.jpg";
 string imagePath = @"C:\Users\chris\OneDrive\Bilder\Camera Roll\IMG_20250108_024734.jpg";
 
 if (!File.Exists(imagePath))

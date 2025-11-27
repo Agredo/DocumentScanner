@@ -86,8 +86,14 @@ public class DocumentDetector : IDocumentDetector
                 }
             }
 
-            // Step 4: Apply Gaussian blur to reduce noise
-            var blurred = ImageProcessor.GaussianBlur(grayscale, options.BlurKernelSize);
+            // Step 4: Apply stronger Gaussian blur to reduce texture noise from backgrounds
+            // Use a larger kernel for noisy/textured images
+            int blurKernel = options.BlurKernelSize;
+            if (blurKernel < 7)
+            {
+                blurKernel = 7; // Increase minimum blur to reduce texture noise
+            }
+            var blurred = ImageProcessor.GaussianBlur(grayscale, blurKernel);
 
             // Step 5: Detect edges
             byte[,] edges;
@@ -102,8 +108,9 @@ public class DocumentDetector : IDocumentDetector
                 edges = EdgeDetector.Canny(blurred, options.CannyLowThreshold, options.CannyHighThreshold);
             }
 
-            // Step 6: Apply morphological closing to connect broken edges
-            edges = EdgeDetector.MorphologicalClose(edges, 3);
+            // Step 6: Apply stronger morphological closing to connect document edges
+            // Use larger kernel to better connect document edges
+            edges = EdgeDetector.MorphologicalClose(edges, 5);
 
             // Step 7: Find contours
             // Quick check: if there are very few edge pixels, return early
@@ -131,7 +138,7 @@ public class DocumentDetector : IDocumentDetector
 
             // Step 8: Find the best quadrilateral
             var imageArea = processWidth * processHeight;
-            var bestQuad = FindBestQuadrilateral(contours, imageArea, options);
+            var bestQuad = FindBestQuadrilateral(contours, imageArea, processWidth, processHeight, options);
 
             if (bestQuad == null)
             {
@@ -169,12 +176,17 @@ public class DocumentDetector : IDocumentDetector
     private Quadrilateral? FindBestQuadrilateral(
         List<ContourDetector.Contour> contours,
         float imageArea,
+        int imageWidth,
+        int imageHeight,
         DetectionOptions options)
     {
         float minArea = imageArea * options.MinAreaRatio;
         float maxArea = imageArea * options.MaxAreaRatio;
 
         var candidates = new List<(Quadrilateral Quad, float Score)>();
+
+        // Define border margin for detecting contours that touch edges
+        float borderMargin = Math.Min(imageWidth, imageHeight) * 0.05f; // 5% margin
 
         foreach (var contour in contours)
         {
@@ -186,6 +198,13 @@ public class DocumentDetector : IDocumentDetector
             {
                 continue;
             }
+
+            // Check if contour touches image borders (documents usually have some margin)
+            bool touchesBorder = 
+                bounds.X < borderMargin || 
+                bounds.Y < borderMargin ||
+                (bounds.X + bounds.Width) > (imageWidth - borderMargin) ||
+                (bounds.Y + bounds.Height) > (imageHeight - borderMargin);
 
             // Get convex hull
             var hull = ContourDetector.ConvexHull(contour.Points);
@@ -212,7 +231,7 @@ public class DocumentDetector : IDocumentDetector
                     continue;
                 }
                 
-                float score = ScoreQuadrilateral(quad, imageArea);
+                float score = ScoreQuadrilateral(quad, imageArea, touchesBorder);
 
                 if (score > 0)
                 {
@@ -233,7 +252,7 @@ public class DocumentDetector : IDocumentDetector
                         continue;
                     }
                     
-                    float score = ScoreQuadrilateral(quad, imageArea);
+                    float score = ScoreQuadrilateral(quad, imageArea, touchesBorder);
 
                     if (score > 0)
                     {
@@ -403,13 +422,25 @@ public class DocumentDetector : IDocumentDetector
     /// <summary>
     /// Scores a quadrilateral based on various criteria.
     /// </summary>
-    private float ScoreQuadrilateral(Quadrilateral quad, float imageArea)
+    private float ScoreQuadrilateral(Quadrilateral quad, float imageArea, bool touchesBorder)
     {
         float score = 0;
 
-        // Factor 1: Area ratio (prefer larger documents)
+        // Factor 1: Area ratio (prefer larger documents, but not too large)
         float areaRatio = quad.Area / imageArea;
-        score += areaRatio * 100;
+        // Penalize very small and very large areas
+        if (areaRatio < 0.1f)
+        {
+            score += areaRatio * 500; // Small penalty
+        }
+        else if (areaRatio > 0.85f)
+        {
+            score += (1 - areaRatio) * 200; // Penalize very large (likely background)
+        }
+        else
+        {
+            score += areaRatio * 100;
+        }
 
         // Factor 2: Aspect ratio similarity to common document formats
         float aspectRatio = quad.Width / quad.Height;
@@ -448,6 +479,13 @@ public class DocumentDetector : IDocumentDetector
         float edgeStdDev = MathF.Sqrt(edgeVariance);
         float edgeRegularity = 1 - Math.Min(1, edgeStdDev / avgEdge);
         score += edgeRegularity * 20;
+
+        // Factor 5: Penalize contours that touch image borders
+        // Documents usually have some margin from the frame edges
+        if (touchesBorder)
+        {
+            score *= 0.5f; // Heavy penalty for touching borders
+        }
 
         return score;
     }
