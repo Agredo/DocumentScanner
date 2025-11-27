@@ -245,6 +245,7 @@ public static class ImageProcessor
 
     /// <summary>
     /// Applies CLAHE (Contrast Limited Adaptive Histogram Equalization).
+    /// REWRITTEN: Simplified and more robust implementation.
     /// </summary>
     public static byte[,] ApplyCLAHE(byte[,] image, int tileSize = 8, float clipLimit = 2.0f)
     {
@@ -255,7 +256,7 @@ public static class ImageProcessor
         int tilesY = (height + tileSize - 1) / tileSize;
         int tilesX = (width + tileSize - 1) / tileSize;
 
-        // Process each tile
+        // Process each tile and build LUTs
         var tileLUTs = new byte[tilesY, tilesX, 256];
 
         for (int ty = 0; ty < tilesY; ty++)
@@ -280,10 +281,22 @@ public static class ImageProcessor
                     }
                 }
 
-                // Clip histogram
-                int clipThreshold = (int)(clipLimit * pixelCount / 256);
-                int excess = 0;
+                // Safety check
+                if (pixelCount == 0)
+                {
+                    // Empty tile - use identity mapping
+                    for (int i = 0; i < 256; i++)
+                    {
+                        tileLUTs[ty, tx, i] = (byte)i;
+                    }
+                    continue;
+                }
 
+                // Clip histogram
+                int clipThreshold = (int)(clipLimit * pixelCount / 256.0f);
+                if (clipThreshold < 1) clipThreshold = 1;
+                
+                int excess = 0;
                 for (int i = 0; i < 256; i++)
                 {
                     if (histogram[i] > clipThreshold)
@@ -293,14 +306,16 @@ public static class ImageProcessor
                     }
                 }
 
-                // Redistribute excess
+                // Redistribute excess uniformly
                 int avgIncrease = excess / 256;
+                int remainder = excess % 256;
                 for (int i = 0; i < 256; i++)
                 {
                     histogram[i] += avgIncrease;
+                    if (i < remainder) histogram[i]++;
                 }
 
-                // Build CDF and LUT
+                // Build CDF
                 int[] cdf = new int[256];
                 cdf[0] = histogram[0];
                 for (int i = 1; i < 256; i++)
@@ -308,9 +323,35 @@ public static class ImageProcessor
                     cdf[i] = cdf[i - 1] + histogram[i];
                 }
 
+                // Find minimum non-zero CDF value for normalization
+                int cdfMin = cdf[0];
                 for (int i = 0; i < 256; i++)
                 {
-                    tileLUTs[ty, tx, i] = (byte)Math.Clamp(cdf[i] * 255 / pixelCount, 0, 255);
+                    if (cdf[i] > 0)
+                    {
+                        cdfMin = cdf[i];
+                        break;
+                    }
+                }
+
+                // Create LUT using proper histogram equalization formula
+                int cdfMax = cdf[255];
+                if (cdfMax == cdfMin)
+                {
+                    // No variation - use identity mapping
+                    for (int i = 0; i < 256; i++)
+                    {
+                        tileLUTs[ty, tx, i] = (byte)i;
+                    }
+                }
+                else
+                {
+                    for (int i = 0; i < 256; i++)
+                    {
+                        // Standard histogram equalization formula
+                        float normalized = (float)(cdf[i] - cdfMin) / (cdfMax - cdfMin);
+                        tileLUTs[ty, tx, i] = (byte)Math.Clamp((int)(normalized * 255.0f + 0.5f), 0, 255);
+                    }
                 }
             }
         }
@@ -320,22 +361,21 @@ public static class ImageProcessor
         {
             for (int x = 0; x < width; x++)
             {
+                // Calculate tile coordinates with proper centering
                 float tileY = (float)y / tileSize - 0.5f;
                 float tileX = (float)x / tileSize - 0.5f;
 
-                int ty1 = Math.Clamp((int)tileY, 0, tilesY - 1);
-                int tx1 = Math.Clamp((int)tileX, 0, tilesX - 1);
+                int ty1 = Math.Clamp((int)Math.Floor(tileY), 0, tilesY - 1);
+                int tx1 = Math.Clamp((int)Math.Floor(tileX), 0, tilesX - 1);
                 int ty2 = Math.Min(ty1 + 1, tilesY - 1);
                 int tx2 = Math.Min(tx1 + 1, tilesX - 1);
 
-                float fy = tileY - ty1;
-                float fx = tileX - tx1;
-                fy = Math.Clamp(fy, 0, 1);
-                fx = Math.Clamp(fx, 0, 1);
+                float fy = Math.Clamp(tileY - ty1, 0, 1);
+                float fx = Math.Clamp(tileX - tx1, 0, 1);
 
                 byte value = image[y, x];
 
-                // Bilinear interpolation
+                // Bilinear interpolation of the 4 surrounding tile LUTs
                 float v00 = tileLUTs[ty1, tx1, value];
                 float v10 = tileLUTs[ty1, tx2, value];
                 float v01 = tileLUTs[ty2, tx1, value];
@@ -345,7 +385,7 @@ public static class ImageProcessor
                 float bottom = v01 * (1 - fx) + v11 * fx;
                 float finalValue = top * (1 - fy) + bottom * fy;
 
-                result[y, x] = (byte)Math.Clamp(finalValue, 0, 255);
+                result[y, x] = (byte)Math.Clamp((int)(finalValue + 0.5f), 0, 255);
             }
         }
 

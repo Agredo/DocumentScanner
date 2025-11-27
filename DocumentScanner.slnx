@@ -3,4 +3,5 @@
     <Deploy Solution="Debug|*" />
   </Project>
   <Project Path="src/DocumentScanner/DocumentScanner.csproj" />
+  <Project Path="TestConsoleApp/TestConsoleApp.csproj" Id="f9fd3679-dfc9-4523-9738-7b888024b435" />
 </Solution>

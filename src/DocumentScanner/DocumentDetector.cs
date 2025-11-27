@@ -76,7 +76,14 @@ public class DocumentDetector : IDocumentDetector
             // Step 3: Enhance contrast if enabled
             if (options.EnhanceContrast)
             {
-                grayscale = ImageProcessor.ApplyCLAHE(grayscale, 8, 2.0f);
+                if (options.UseSimpleHistogramEqualization)
+                {
+                    grayscale = ImageProcessor.EnhanceContrast(grayscale);
+                }
+                else
+                {
+                    grayscale = ImageProcessor.ApplyCLAHE(grayscale, 8, 2.0f);
+                }
             }
 
             // Step 4: Apply Gaussian blur to reduce noise
@@ -99,7 +106,23 @@ public class DocumentDetector : IDocumentDetector
             edges = EdgeDetector.MorphologicalClose(edges, 3);
 
             // Step 7: Find contours
-            var contours = ContourDetector.FindContours(edges);
+            // Quick check: if there are very few edge pixels, return early
+            int edgeCount = 0;
+            for (int y = 0; y < processHeight && edgeCount < 100; y++)
+            {
+                for (int x = 0; x < processWidth && edgeCount < 100; x++)
+                {
+                    if (edges[y, x] > 0) edgeCount++;
+                }
+            }
+            
+            if (edgeCount == 0)
+            {
+                return DetectionResult.Failed("No edges found in image", originalWidth, originalHeight);
+            }
+            
+            // Use the simpler BFS-based contour detection (more robust, less prone to OutOfMemoryException)
+            var contours = ContourDetector.FindContoursSimple(edges);
 
             if (contours.Count == 0)
             {
@@ -155,17 +178,27 @@ public class DocumentDetector : IDocumentDetector
 
         foreach (var contour in contours)
         {
-            if (contour.Area < minArea || contour.Area > maxArea)
+            // Use bounding box area instead of Shoelace area (BFS gives unordered points)
+            var bounds = contour.BoundingRect;
+            float boundingArea = bounds.Width * bounds.Height;
+            
+            if (boundingArea < minArea || boundingArea > maxArea)
+            {
                 continue;
+            }
 
             // Get convex hull
             var hull = ContourDetector.ConvexHull(contour.Points);
 
             if (hull.Count < 4)
+            {
                 continue;
+            }
 
             // Approximate to polygon
-            float epsilon = options.ApproximationEpsilon * contour.Perimeter;
+            // Use bounding box perimeter instead of Shoelace (BFS gives unordered points)
+            float boundingPerimeter = 2 * (bounds.Width + bounds.Height);
+            float epsilon = options.ApproximationEpsilon * boundingPerimeter;
             var approximatedContour = new ContourDetector.Contour { Points = hull };
             var approx = ContourDetector.ApproximatePolygon(approximatedContour, epsilon);
 
@@ -173,6 +206,12 @@ public class DocumentDetector : IDocumentDetector
             if (approx.Points.Count == 4)
             {
                 var quad = Quadrilateral.FromPoints(approx.Points.ToArray());
+                
+                if (!IsValidQuadrilateral(quad))
+                {
+                    continue;
+                }
+                
                 float score = ScoreQuadrilateral(quad, imageArea);
 
                 if (score > 0)
@@ -188,6 +227,12 @@ public class DocumentDetector : IDocumentDetector
                 if (bestFourPoints != null)
                 {
                     var quad = Quadrilateral.FromPoints(bestFourPoints);
+                    
+                    if (!IsValidQuadrilateral(quad))
+                    {
+                        continue;
+                    }
+                    
                     float score = ScoreQuadrilateral(quad, imageArea);
 
                     if (score > 0)
@@ -246,7 +291,7 @@ public class DocumentDetector : IDocumentDetector
         else
         {
             // For larger polygons, use corner detection heuristic
-            // Find 4 points with maximum total distance from centroid
+            // Find 4 points with maximum total distance to centroid
             float cx = points.Average(p => p.X);
             float cy = points.Average(p => p.Y);
             var centroid = new PointF(cx, cy);

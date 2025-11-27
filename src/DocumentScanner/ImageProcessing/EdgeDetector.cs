@@ -97,6 +97,30 @@ public static class EdgeDetector
     }
 
     /// <summary>
+    /// DEBUG version of Canny that exposes intermediate steps.
+    /// </summary>
+    public static (byte[,] Edges, byte[,] Nms, byte[,] Thresholded) CannyDebug(
+        byte[,] image, int lowThreshold = 50, int highThreshold = 150)
+    {
+        int height = image.GetLength(0);
+        int width = image.GetLength(1);
+
+        // Step 2: Calculate gradients using Sobel
+        var (sobelMag, sobelDir) = Sobel(image, computeDirection: true);
+
+        // Step 3: Non-maximum suppression
+        var nms = NonMaximumSuppression(sobelMag, sobelDir!);
+
+        // Step 4: Double thresholding
+        var thresholded = DoubleThreshold(nms, lowThreshold, highThreshold);
+
+        // Step 5: Edge tracking by hysteresis
+        var edges = HysteresisTracking(thresholded);
+
+        return (edges, nms, thresholded);
+    }
+
+    /// <summary>
     /// Applies non-maximum suppression to thin edges.
     /// </summary>
     private static byte[,] NonMaximumSuppression(byte[,] magnitude, float[,] direction)
@@ -285,6 +309,88 @@ public static class EdgeDetector
         int highThreshold = (int)Math.Min(255, (1.0 + sigma) * median);
 
         return Canny(image, lowThreshold, highThreshold);
+    }
+
+    /// <summary>
+    /// Applies adaptive Canny edge detection using Otsu's method for automatic threshold calculation.
+    /// More robust for low-contrast images.
+    /// </summary>
+    public static byte[,] AdaptiveCannyOtsu(byte[,] image)
+    {
+        int height = image.GetLength(0);
+        int width = image.GetLength(1);
+        
+        // Calculate gradients first
+        var (magnitude, _) = Sobel(image, computeDirection: false);
+        
+        // Calculate Otsu threshold on gradient magnitudes
+        int threshold = CalculateOtsuThreshold(magnitude);
+        
+        // Use threshold to determine Canny parameters
+        // Low threshold = 0.5 * otsu, High threshold = 1.5 * otsu
+        int lowThreshold = Math.Max(5, threshold / 2);
+        int highThreshold = Math.Min(255, (threshold * 3) / 2);
+        
+        return Canny(image, lowThreshold, highThreshold);
+    }
+    
+    /// <summary>
+    /// Calculates optimal threshold using Otsu's method.
+    /// </summary>
+    private static int CalculateOtsuThreshold(byte[,] image)
+    {
+        int height = image.GetLength(0);
+        int width = image.GetLength(1);
+        
+        // Build histogram
+        int[] histogram = new int[256];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                histogram[image[y, x]]++;
+            }
+        }
+        
+        int totalPixels = width * height;
+        
+        // Calculate total mean
+        float sum = 0;
+        for (int i = 0; i < 256; i++)
+        {
+            sum += i * histogram[i];
+        }
+        
+        float sumB = 0;
+        int wB = 0;
+        int wF = 0;
+        
+        float maxVariance = 0;
+        int threshold = 0;
+        
+        for (int t = 0; t < 256; t++)
+        {
+            wB += histogram[t];
+            if (wB == 0) continue;
+            
+            wF = totalPixels - wB;
+            if (wF == 0) break;
+            
+            sumB += t * histogram[t];
+            
+            float mB = sumB / wB;
+            float mF = (sum - sumB) / wF;
+            
+            float variance = wB * wF * (mB - mF) * (mB - mF);
+            
+            if (variance > maxVariance)
+            {
+                maxVariance = variance;
+                threshold = t;
+            }
+        }
+        
+        return threshold;
     }
 
     /// <summary>

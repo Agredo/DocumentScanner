@@ -412,19 +412,26 @@ public class DetectionOptions
     public int BlurKernelSize { get; set; } = 5;
 
     /// <summary>
-    /// Low threshold for Canny edge detection. Default: 50
+    /// Low threshold for Canny edge detection. Default: 30
+    /// Lower values detect more edges, higher values detect only strong edges.
+    /// Recommended: 20-30 for white documents on light backgrounds, 40-50 for higher contrast.
     /// </summary>
-    public int CannyLowThreshold { get; set; } = 50;
+    public int CannyLowThreshold { get; set; } = 30;
 
     /// <summary>
-    /// High threshold for Canny edge detection. Default: 150
+    /// High threshold for Canny edge detection. Default: 90
+    /// Should be 2-3x the low threshold.
+    /// Recommended: 60-90 for white documents on light backgrounds, 100-150 for higher contrast.
     /// </summary>
-    public int CannyHighThreshold { get; set; } = 150;
+    public int CannyHighThreshold { get; set; } = 90;
 
     /// <summary>
-    /// Whether to apply adaptive thresholding before edge detection. Default: true
+    /// Whether to apply adaptive thresholding before edge detection. Default: false
+    /// NOTE: Sauvola thresholding is designed for text extraction, not document boundary detection.
+    /// For most document scanning use cases, direct Canny edge detection works better.
+    /// Only enable this for specific scenarios like detecting text-heavy documents on complex backgrounds.
     /// </summary>
-    public bool UseAdaptiveThreshold { get; set; } = true;
+    public bool UseAdaptiveThreshold { get; set; } = false;
 
     /// <summary>
     /// Block size for adaptive thresholding. Must be odd. Default: 11
@@ -435,6 +442,12 @@ public class DetectionOptions
     /// Whether to enhance contrast before processing. Default: true
     /// </summary>
     public bool EnhanceContrast { get; set; } = true;
+
+    /// <summary>
+    /// Use simple histogram equalization instead of CLAHE. Default: true (for performance)
+    /// Set to false to use CLAHE (slower but better quality).
+    /// </summary>
+    public bool UseSimpleHistogramEqualization { get; set; } = true;
 
     /// <summary>
     /// Scale factor for processing (1.0 = original size). 

@@ -123,18 +123,50 @@ public static class ContourDetector
         int currentLabel = 1;
 
         // Moore neighborhood (8-connected) in clockwise order
+        // Starting from East (right) and going clockwise
         int[] dx = { 1, 1, 0, -1, -1, -1, 0, 1 };
         int[] dy = { 0, 1, 1, 1, 0, -1, -1, -1 };
 
-        for (int y = 1; y < height - 1; y++)
+        // Scan for contour start points - need border pixels
+        for (int y = 0; y < height; y++)
         {
-            for (int x = 1; x < width - 1; x++)
+            for (int x = 0; x < width; x++)
             {
                 // Found an unlabeled foreground pixel
                 if (binaryImage[y, x] > 0 && labels[y, x] == 0)
                 {
-                    // Check if it's an outer contour (background to left)
-                    if (binaryImage[y, x - 1] == 0)
+                    // Check if it's a border pixel (has at least one background neighbor)
+                    bool isBorder = false;
+                    
+                    // Check 4-connected neighbors for background
+                    if (x == 0 || x == width - 1 || y == 0 || y == height - 1)
+                    {
+                        isBorder = true;
+                    }
+                    else
+                    {
+                        // Check if any neighbor is background
+                        for (int dir = 0; dir < 8; dir++)
+                        {
+                            int nx = x + dx[dir];
+                            int ny = y + dy[dir];
+                            if (nx >= 0 && nx < width && ny >= 0 && ny < height)
+                            {
+                                if (binaryImage[ny, nx] == 0)
+                                {
+                                    isBorder = true;
+                                    break;
+                                }
+                            }
+                            else
+                            {
+                                isBorder = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (isBorder)
                     {
                         var contour = TraceContour(binaryImage, labels, x, y, currentLabel, dx, dy);
                         if (contour.Points.Count >= 3)
@@ -142,6 +174,11 @@ public static class ContourDetector
                             contours.Add(contour);
                         }
                         currentLabel++;
+                    }
+                    else
+                    {
+                        // Mark isolated interior pixels
+                        labels[y, x] = currentLabel;
                     }
                 }
             }
@@ -151,7 +188,7 @@ public static class ContourDetector
     }
 
     /// <summary>
-    /// Traces a single contour starting from the given point.
+    /// Traces a single contour starting from the given point using Moore-Neighbor tracing.
     /// </summary>
     private static Contour TraceContour(byte[,] image, int[,] labels, int startX, int startY, int label,
         int[] dx, int[] dy)
@@ -162,62 +199,100 @@ public static class ContourDetector
 
         int x = startX;
         int y = startY;
-        int dir = 0; // Start direction
-
-        // Find the first direction with a background pixel
+        
+        // Find the initial search direction by looking for a background pixel
+        // Start searching from the left (West) direction
+        int backtrackDir = 6; // West
+        
+        // Find first background pixel in clockwise order starting from West
         for (int i = 0; i < 8; i++)
         {
-            int nx = x + dx[i];
-            int ny = y + dy[i];
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height && image[ny, nx] == 0)
+            int checkDir = (backtrackDir + i) % 8;
+            int nx = x + dx[checkDir];
+            int ny = y + dy[checkDir];
+            
+            bool isBackground = false;
+            if (nx < 0 || nx >= width || ny < 0 || ny >= height)
             {
-                dir = i;
+                isBackground = true;
+            }
+            else if (image[ny, nx] == 0)
+            {
+                isBackground = true;
+            }
+            
+            if (isBackground)
+            {
+                backtrackDir = checkDir;
                 break;
             }
         }
 
-        int startDir = dir;
-        bool first = true;
+        int firstMoveDir = -1;
+        int currentDir = backtrackDir;
 
         do
         {
+            // Add current point to contour
             contour.Points.Add(new PointF(x, y));
             labels[y, x] = label;
 
-            // Search for next foreground pixel in Moore neighborhood
-            // Start from the direction opposite to the one we came from
-            dir = (dir + 5) % 8;
-
+            // Search for next boundary pixel in Moore neighborhood
+            // Start from 90 degrees counterclockwise from the direction we came from
+            int searchStartDir = (currentDir + 6) % 8; // +6 is equivalent to -2 in mod 8
+            
             bool found = false;
+            int newDir = searchStartDir;
+            
             for (int i = 0; i < 8; i++)
             {
-                int checkDir = (dir + i) % 8;
+                int checkDir = (searchStartDir + i) % 8;
                 int nx = x + dx[checkDir];
                 int ny = y + dy[checkDir];
 
+                // Check bounds
                 if (nx >= 0 && nx < width && ny >= 0 && ny < height)
                 {
                     if (image[ny, nx] > 0)
                     {
+                        // Found next foreground pixel
                         x = nx;
                         y = ny;
-                        dir = checkDir;
+                        newDir = checkDir;
                         found = true;
                         break;
                     }
                 }
             }
 
-            if (!found) break;
-
-            // Check if we're back at the start
-            if (x == startX && y == startY)
+            if (!found)
             {
-                if (!first) break;
-                first = false;
+                // Isolated pixel or end of contour
+                break;
             }
 
-        } while (contour.Points.Count < width * height); // Safety limit
+            // Remember the first move direction
+            if (firstMoveDir == -1)
+            {
+                firstMoveDir = newDir;
+            }
+
+            currentDir = newDir;
+
+            // Termination condition: back at start with same entry direction
+            if (x == startX && y == startY && contour.Points.Count > 2)
+            {
+                // We've completed the loop
+                break;
+            }
+
+            // Safety check to prevent infinite loops
+            if (contour.Points.Count > width * height)
+            {
+                break;
+            }
+
+        } while (true);
 
         return contour;
     }
@@ -472,5 +547,126 @@ public static class ContourDetector
             point.X * cos - point.Y * sin,
             point.X * sin + point.Y * cos
         );
+    }
+
+    /// <summary>
+    /// Alternative contour detection using a simpler connected components approach.
+    /// Useful for debugging and comparison with the Moore-Neighbor tracing.
+    /// </summary>
+    public static List<Contour> FindContoursSimple(byte[,] binaryImage)
+    {
+        int height = binaryImage.GetLength(0);
+        int width = binaryImage.GetLength(1);
+
+        var visited = new bool[height, width];
+        var contours = new List<Contour>();
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                if (binaryImage[y, x] > 0 && !visited[y, x])
+                {
+                    // Check if this is a boundary pixel
+                    bool isBoundary = false;
+                    
+                    // Check 8-neighbors
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            if (dx == 0 && dy == 0) continue;
+                            
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            
+                            if (nx < 0 || nx >= width || ny < 0 || ny >= height || binaryImage[ny, nx] == 0)
+                            {
+                                isBoundary = true;
+                                break;
+                            }
+                        }
+                        if (isBoundary) break;
+                    }
+                    
+                    if (isBoundary)
+                    {
+                        var contour = ExtractContourBFS(binaryImage, visited, x, y);
+                        if (contour.Points.Count >= 3)
+                        {
+                            contours.Add(contour);
+                        }
+                    }
+                }
+            }
+        }
+
+        return contours;
+    }
+
+    /// <summary>
+    /// Extracts a contour using BFS (breadth-first search) to find all connected boundary pixels.
+    /// </summary>
+    private static Contour ExtractContourBFS(byte[,] image, bool[,] visited, int startX, int startY)
+    {
+        var contour = new Contour();
+        var queue = new Queue<(int X, int Y)>();
+        
+        int height = image.GetLength(0);
+        int width = image.GetLength(1);
+        
+        queue.Enqueue((startX, startY));
+        visited[startY, startX] = true;
+        
+        while (queue.Count > 0)
+        {
+            var (x, y) = queue.Dequeue();
+            
+            // Check if this is a boundary pixel
+            bool isBoundary = false;
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    
+                    int nx = x + dx;
+                    int ny = y + dy;
+                    
+                    if (nx < 0 || nx >= width || ny < 0 || ny >= height || image[ny, nx] == 0)
+                    {
+                        isBoundary = true;
+                        break;
+                    }
+                }
+                if (isBoundary) break;
+            }
+            
+            if (isBoundary)
+            {
+                contour.Points.Add(new PointF(x, y));
+                
+                // Add unvisited neighbors to queue
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height 
+                            && image[ny, nx] > 0 && !visited[ny, nx])
+                        {
+                            visited[ny, nx] = true;
+                            queue.Enqueue((nx, ny));
+                        }
+                    }
+                }
+            }
+        }
+        
+        return contour;
     }
 }
