@@ -1,5 +1,6 @@
 using DocumentScanner.Core;
 using DocumentScanner.ImageProcessing;
+using DocumentScanner.Visualization;
 using SkiaSharp;
 
 namespace DocumentScanner;
@@ -223,75 +224,32 @@ public class Scanner : IDisposable
 
     /// <summary>
     /// Creates a visualization of the detected document on the original image.
-    /// Useful for previewing detection results.
     /// </summary>
-    public byte[] CreateDetectionVisualization(
+    /// <param name="imageBytes">Original image as byte array</param>
+    /// <param name="result">Detection result to visualize</param>
+    /// <param name="options">Optional visualization options</param>
+    /// <returns>Visualized image as byte array</returns>
+    public byte[] CreateVisualization(
         byte[] imageBytes,
         DetectionResult result,
-        SKColor? lineColor = null,
-        SKColor? cornerColor = null,
-        float lineWidth = 3)
+        VisualizationOptions? options = null)
     {
-        if (!result.Success || result.Corners == null)
-            return imageBytes;
+        return DocumentVisualizer.CreateVisualization(imageBytes, result, options);
+    }
 
-        using var bitmap = ImageProcessor.LoadImage(imageBytes);
-        using var canvas = new SKCanvas(bitmap);
-
-        var corners = result.Corners.ToArray();
-
-        // Draw the quadrilateral
-        using var linePaint = new SKPaint
-        {
-            Color = lineColor ?? SKColors.LimeGreen,
-            StrokeWidth = lineWidth,
-            Style = SKPaintStyle.Stroke,
-            IsAntialias = true
-        };
-
-        var path = new SKPath();
-        path.MoveTo(corners[0].ToSKPoint());
-        for (int i = 1; i < corners.Length; i++)
-        {
-            path.LineTo(corners[i].ToSKPoint());
-        }
-        path.Close();
-        canvas.DrawPath(path, linePaint);
-
-        // Draw corner points
-        using var cornerPaint = new SKPaint
-        {
-            Color = cornerColor ?? SKColors.Red,
-            Style = SKPaintStyle.Fill,
-            IsAntialias = true
-        };
-
-        float cornerRadius = lineWidth * 2;
-        foreach (var corner in corners)
-        {
-            canvas.DrawCircle(corner.ToSKPoint(), cornerRadius, cornerPaint);
-        }
-
-        // Add corner labels
-        using var textPaint = new SKPaint
-        {
-            Color = SKColors.White,
-            TextSize = 16,
-            IsAntialias = true
-        };
-
-        string[] labels = { "TL", "TR", "BR", "BL" };
-        for (int i = 0; i < corners.Length; i++)
-        {
-            canvas.DrawText(
-                labels[i],
-                corners[i].X + cornerRadius + 5,
-                corners[i].Y + 5,
-                textPaint
-            );
-        }
-
-        return ImageProcessor.SaveImage(bitmap, SKEncodedImageFormat.Png);
+    /// <summary>
+    /// Creates a visualization of the detected document and returns it as SKBitmap.
+    /// </summary>
+    /// <param name="bitmap">Original image as SKBitmap</param>
+    /// <param name="result">Detection result to visualize</param>
+    /// <param name="options">Optional visualization options</param>
+    /// <returns>Visualized image as SKBitmap</returns>
+    public SKBitmap CreateVisualizationBitmap(
+        SKBitmap bitmap,
+        DetectionResult result,
+        VisualizationOptions? options = null)
+    {
+        return DocumentVisualizer.CreateVisualizationBitmap(bitmap, result, options);
     }
 
     public void Dispose()

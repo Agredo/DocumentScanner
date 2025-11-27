@@ -1,6 +1,7 @@
 ﻿using DocumentScanner;
 using DocumentScanner.Core;
 using DocumentScanner.ImageProcessing;
+using DocumentScanner.Visualization;
 using SkiaSharp;
 
 Console.WriteLine("=== DocumentScanner Debug Tool ===\n");
@@ -23,6 +24,9 @@ try
     
     Console.WriteLine($"Image loaded: {bitmap.Width}x{bitmap.Height} pixels\n");
     
+    // Create scanner
+    var scanner = new Scanner();
+    
     // Test with different detection options
     var testConfigs = new[]
     {
@@ -36,7 +40,7 @@ try
     foreach (var config in testConfigs)
     {
         Console.WriteLine($"=== Testing: {config.Name} ===");
-        TestDetection(bitmap, config.Options);
+        TestDetection(scanner, imageBytes, config.Options);
         Console.WriteLine();
     }
     
@@ -53,10 +57,9 @@ catch (Exception ex)
 Console.WriteLine("\nPress any key to exit...");
 Console.ReadKey();
 
-static void TestDetection(SKBitmap bitmap, DetectionOptions options)
+static void TestDetection(Scanner scanner, byte[] imageBytes, DetectionOptions options)
 {
-    var detector = new DocumentDetector(options);
-    var result = detector.Detect(bitmap, options);
+    var result = scanner.Detect(imageBytes, options);
     
     Console.WriteLine($"  Success: {result.Success}");
     if (result.Success)
@@ -65,6 +68,12 @@ static void TestDetection(SKBitmap bitmap, DetectionOptions options)
         Console.WriteLine($"  Corners: TL={result.Corners.TopLeft}, TR={result.Corners.TopRight}");
         Console.WriteLine($"           BL={result.Corners.BottomLeft}, BR={result.Corners.BottomRight}");
         Console.WriteLine($"  Rotation: {result.AngleInfo.RotationAngle:F1}°");
+        
+        // Create visualization using the library's visualization API
+        var visualizationBytes = scanner.CreateVisualization(imageBytes, result);
+        string filename = $"detection_{options.CannyLowThreshold}_{options.CannyHighThreshold}.jpg";
+        File.WriteAllBytes(filename, visualizationBytes);
+        Console.WriteLine($"  Saved: {filename}");
     }
     else
     {

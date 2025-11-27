@@ -112,8 +112,8 @@ public partial class MainPage : ContentPage
 
             if (currentDetection.Success)
             {
-                // Show detection preview with corners highlighted
-                var previewBytes = scanner.CreateDetectionVisualization(
+                // Show detection preview with corners highlighted using the library's visualization API
+                var previewBytes = scanner.CreateVisualization(
                     currentImageBytes, 
                     currentDetection
                 );
