@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="DocumentScanner.Maui.SampleApp/DocumentScanner.Maui.SampleApp.csproj" Id="7b8b1733-96d2-4efb-9477-a19d9845d047">
+    <Deploy Solution="Debug|*" />
+  </Project>
+  <Project Path="src/DocumentScanner/DocumentScanner.csproj" />
+</Solution>

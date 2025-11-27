@@ -1,0 +1,99 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="DocumentScanner.Maui.SampleApp.MainPage"
+             Title="Document Scanner">
+
+    <Grid RowDefinitions="*, Auto, Auto" Padding="10">
+        
+        <!-- Image Display Area -->
+        <Border Grid.Row="0" 
+                Stroke="{StaticResource Gray300}"
+                StrokeThickness="2"
+                StrokeShape="RoundRectangle 10">
+            <Grid>
+                <!-- Original/Preview Image -->
+                <Image x:Name="ImagePreview"
+                       Aspect="AspectFit"
+                       HorizontalOptions="Fill"
+                       VerticalOptions="Fill"/>
+                
+                <!-- Loading Indicator -->
+                <ActivityIndicator x:Name="LoadingIndicator"
+                                   IsRunning="False"
+                                   IsVisible="False"
+                                   Color="{StaticResource Primary}"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   HeightRequest="50"
+                                   WidthRequest="50"/>
+                
+                <!-- Placeholder Text -->
+                <Label x:Name="PlaceholderLabel"
+                       Text="Tap 'Select Image' or 'Take Photo' to start"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center"
+                       TextColor="{StaticResource Gray500}"
+                       FontSize="16"/>
+            </Grid>
+        </Border>
+
+        <!-- Detection Info Panel -->
+        <Frame Grid.Row="1" 
+               Margin="0,10,0,0"
+               Padding="10"
+               BorderColor="{StaticResource Gray300}"
+               CornerRadius="10"
+               IsVisible="False"
+               x:Name="InfoPanel">
+            <StackLayout Spacing="5">
+                <Label x:Name="StatusLabel" 
+                       FontAttributes="Bold"
+                       FontSize="16"/>
+                <Label x:Name="ConfidenceLabel" 
+                       FontSize="14"
+                       TextColor="{StaticResource Gray600}"/>
+                <Label x:Name="AngleLabel" 
+                       FontSize="14"
+                       TextColor="{StaticResource Gray600}"/>
+                <Label x:Name="DimensionsLabel" 
+                       FontSize="14"
+                       TextColor="{StaticResource Gray600}"/>
+            </StackLayout>
+        </Frame>
+
+        <!-- Button Panel -->
+        <Grid Grid.Row="2" 
+              ColumnDefinitions="*, *, *"
+              ColumnSpacing="10"
+              Margin="0,10,0,0">
+            
+            <Button Grid.Column="0"
+                    x:Name="SelectImageButton"
+                    Text="📁 Select"
+                    Clicked="OnSelectImageClicked"
+                    BackgroundColor="{StaticResource Primary}"
+                    TextColor="White"
+                    CornerRadius="10"/>
+            
+            <Button Grid.Column="1"
+                    x:Name="TakePhotoButton"
+                    Text="📷 Photo"
+                    Clicked="OnTakePhotoClicked"
+                    BackgroundColor="{StaticResource Primary}"
+                    TextColor="White"
+                    CornerRadius="10"/>
+            
+            <Button Grid.Column="2"
+                    x:Name="ProcessButton"
+                    Text="✨ Process"
+                    Clicked="OnProcessClicked"
+                    IsEnabled="False"
+                    BackgroundColor="{StaticResource Secondary}"
+                    TextColor="White"
+                    CornerRadius="10"/>
+        </Grid>
+        
+    </Grid>
+
+</ContentPage>
